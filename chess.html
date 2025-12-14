@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Online Multiplayer Chess</title>
+
+<!-- Chess rules -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+
+  .game {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 14px;
+    width: 360px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+  }
+
+  .players {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    border: 3px solid white;
+  }
+
+  .square {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    cursor: pointer;
+  }
+
+  .light { background: #f1f5f9; color: #000; }
+  .dark { background: #64748b; }
+
+  .selected { outline: 3px solid red; }
+
+  .status { text-align: center; margin-top: 10px; }
+
+  button {
+    margin-top: 10px;
+    width: 100%;
+    padding: 8px;
+    background: #22c55e;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="game">
+  <div class="players">
+    <div id="white">White</div>
+    <div id="black">Black</div>
+  </div>
+
+  <div class="board" id="board"></div>
+  <div class="status" id="status">Connecting...</div>
+  <button onclick="resetGame()">Restart</button>
+</div>
+
+<script>
+  /********* STEP 1: Firebase Config (REPLACE WITH YOURS) *********/
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "XXXX",
+    appId: "XXXX"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  /********* STEP 2: Room Setup *********/
+  const roomId = new URLSearchParams(window.location.search).get('room') || 'default-room';
+  const gameRef = db.ref('chess/' + roomId);
+
+  const game = new Chess();
+  let selected = null;
+
+  const whiteName = prompt('Enter White player name');
+  const blackName = prompt('Enter Black player name');
+
+  document.getElementById('white').textContent = `White: ${whiteName || 'Player 1'}`;
+  document.getElementById('black').textContent = `Black: ${blackName || 'Player 2'}`;
+
+  const boardEl = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+
+  const pieceMap = {
+    p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚',
+    P: '♙', R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔'
+  };
+
+  function drawBoard() {
+    boardEl.innerHTML = '';
+    game.board().flat().forEach((p, i) => {
+      const sq = document.createElement('div');
+      sq.className = `square ${(Math.floor(i/8)+i)%2===0?'light':'dark'}`;
+      if (p) sq.textContent = pieceMap[p.color==='w'?p.type.toUpperCase():p.type];
+
+      const file = 'abcdefgh'[i%8];
+      const rank = 8 - Math.floor(i/8);
+      const name = file + rank;
+
+      sq.onclick = () => clickSquare(name, sq);
+      boardEl.appendChild(sq);
+    });
+
+    updateStatus();
+  }
+
+  function clickSquare(name, el) {
+    if (selected) {
+      const move = game.move({ from: selected, to: name, promotion: 'q' });
+      selected = null;
+      clearSel();
+      if (move) saveGame();
+    } else {
+      const piece = game.get(name);
+      if (piece && piece.color === game.turn()) {
+        selected = name;
+        el.classList.add('selected');
+      }
+    }
+  }
+
+  function clearSel() {
+    document.querySelectorAll('.square').forEach(s=>s.classList.remove('selected'));
+  }
+
+  function updateStatus() {
+    if (game.in_checkmate()) statusEl.textContent = 'Checkmate!';
+    else if (game.in_draw()) statusEl.textContent = 'Draw!';
+    else statusEl.textContent = (game.turn()==='w'?'White':'Black') + "'s Turn";
+  }
+
+  function saveGame() {
+    gameRef.set({ fen: game.fen() });
+  }
+
+  function resetGame() {
+    game.reset();
+    saveGame();
+  }
+
+  gameRef.on('value', snap => {
+    if (snap.exists()) {
+      game.load(snap.val().fen);
+      drawBoard();
+    }
+  });
+
+  saveGame();
+</script>
+
+</body>
+</html>
